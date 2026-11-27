@@ -1,0 +1,39 @@
+# Local dev infrastructure for mymobile.pk (Next + Medusa).
+# Ports are offset from the defaults so this never collides with zmobile.
+#   docker compose -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: mymobile-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mymobile
+      POSTGRES_PASSWORD: mymobile_dev
+      POSTGRES_DB: mymobilepkdb
+    ports:
+      - "5442:5432"
+    volumes:
+      - mymobile_pg:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: mymobile-redis
+    restart: unless-stopped
+    ports:
+      - "6389:6379"
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.12
+    container_name: mymobile-meili
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: mymobile_dev_meili_master_key_change_me
+      MEILI_ENV: development
+    ports:
+      - "7710:7700"
+    volumes:
+      - mymobile_meili:/meili_data
+
+volumes:
+  mymobile_pg:
+  mymobile_meili:

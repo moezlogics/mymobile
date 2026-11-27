@@ -1,0 +1,132 @@
+import { listProducts } from "@lib/data/products"
+import {
+  getSiteSettings,
+  resolveProductCardAspectClass,
+} from "@lib/data/site-settings"
+import { PRODUCT_CARD_FIELDS } from "@lib/util/product-card-fields"
+import { sortByReleaseDesc } from "@lib/util/product"
+import { HttpTypes } from "@medusajs/types"
+
+import LocalizedClientLink from "@modules/common/components/localized-client-link"
+import ProductPreview from "@modules/products/components/product-preview"
+
+type RailCategory = { id: string; name: string; handle: string }
+
+/**
+ * Anvogue-styled product rail used on the homepage.
+ *
+ * One of three modes:
+ *   • `category` → heading = category name, products filtered to that
+ *                  category, "View All" → the category page. (Used by the
+ *                  admin Homepage Builder, one rail per configured section.)
+ *   • `collection` → heading = collection title, "View All" → collection.
+ *   • neither   → "Latest Mobiles", newest products, "View All" → /store.
+ *
+ * `limit` controls how many products the rail shows (admin-set per section).
+ */
+export default async function ProductRail({
+  collection,
+  category,
+  limit = 8,
+  region,
+}: {
+  collection?: HttpTypes.StoreCollection
+  category?: RailCategory
+  limit?: number
+  region: HttpTypes.StoreRegion
+}) {
+  const safeLimit = Math.max(1, Math.min(24, Number(limit) || 8))
+
+  const [
+    {
+      response: { products: pricedProducts },
+    },
+    settings,
+  ] = await Promise.all([
+    listProducts({
+      regionId: region.id,
+      queryParams: {
+        ...(category?.id ? { category_id: [category.id] } : {}),
+        ...(collection?.id ? { collection_id: collection.id } : {}),
+        // Coarse pre-order only; the real "newest" ordering is by release
+        // date below, which the backend can't sort on (JSON metadata).
+        order: "-created_at",
+        limit: safeLimit,
+        // Light card fields — homepage rail doesn't need variant images/
+        // metadata/tags (big payload cut on the most-visited page).
+        fields: PRODUCT_CARD_FIELDS,
+      } as any,
+    }),
+    getSiteSettings(),
+  ])
+
+  if (!pricedProducts?.length) return null
+
+  // Newest RELEASE first so upcoming / just-launched phones lead the rail,
+  // matching the ordering used on every archive page.
+  const rankedProducts = sortByReleaseDesc(pricedProducts as any[])
+
+  const aspectClass = resolveProductCardAspectClass(settings)
+
+  // The default (home page, newest devices) rail carries the page H1, exactly
+  // like the PHP home page: "Latest Mobile Phones".
+  const isHomeLatest = !category && !collection
+  const heading = category?.name || collection?.title || "Latest Mobile Phones"
+  const HeadingTag = (isHomeLatest ? "h1" : "h2") as "h1" | "h2"
+  const viewAllHref = category
+    ? `/category/${category.handle}/`
+    : collection
+      ? `/collections/${collection.handle}`
+      : `/store`
+
+  return (
+    <section className="pt-0 pb-2">
+      <div className="w-full">
+        <div className="flex flex-col mb-2 sm:mb-3">
+          {(category || collection) && (
+            <div className="text-sub-display has-line-before text-brand-black/70 text-[11px] sm:text-xs mb-1">
+              {category ? "Category" : "Featured"}
+            </div>
+          )}
+          <HeadingTag className="text-lg sm:text-xl font-bold text-ink leading-tight">
+            {heading}
+          </HeadingTag>
+        </div>
+
+        <ul className="grid grid-cols-2 xsmall:grid-cols-3 small:grid-cols-6 medium:grid-cols-8 gap-x-2 small:gap-x-3 gap-y-3 small:gap-y-6">
+          {rankedProducts.map((product, index) => (
+            <li key={product.id}>
+              {/* First 5 cards are above the fold — eager-load their images
+                  so the LCP image isn't lazy (PageSpeed: 1.4s load delay). */}
+              <ProductPreview
+                product={product}
+                region={region}
+                aspectClass={aspectClass}
+                priority={index < 5}
+                // Homepage has a brands sidebar (68px mobile / 110px desktop).
+                // The product grid takes `flex-1` of the remaining space.
+                // Grid cols: 2 (mobile) → 3 (xsmall≥390) → 4 (small≥640)
+                //            → 6 (medium≥768) → 8 (large≥1024)
+                // Sidebar widths: ~68px mobile, ~110px small+, ~110px lg+
+                // col widths (approx): 44vw → 28vw → 22vw → 15vw → 11vw
+                sizes="(max-width: 390px) 44vw, (max-width: 640px) 28vw, (max-width: 768px) 22vw, (max-width: 1024px) 15vw, 11vw"
+              />
+            </li>
+          ))}
+        </ul>
+
+
+        {/* "View All" — bottom-right, after the last product. */}
+        <div className="flex justify-end mt-4 sm:mt-5">
+          <LocalizedClientLink
+            href={viewAllHref}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ink hover:text-primary transition-colors"
+          >
+            View All
+            <i className="ph-bold ph-arrow-right text-[12px]" aria-hidden />
+          </LocalizedClientLink>
+        </div>
+      </div>
+    </section>
+  )
+}
