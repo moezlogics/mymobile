@@ -27,8 +27,8 @@ const resolveSecret = (name: string, stableFallback: string): string => {
   if (val && val.trim().length > 0) return val.trim()
   console.error(
     `[config] ${name} is NOT set. Using a STABLE insecure fallback so sessions survive ` +
-      `restarts, but you SHOULD set ${name} in .env for security. Generate one with: ` +
-      `openssl rand -hex 32   (then redeploy — note: changing it logs everyone out once).`
+    `restarts, but you SHOULD set ${name} in .env for security. Generate one with: ` +
+    `openssl rand -hex 32   (then redeploy — note: changing it logs everyone out once).`
   )
   return stableFallback
 }
@@ -62,9 +62,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 export default defineConfig({
   admin: {
     path: '/app',
-    // Admin UI is built + served at /app (api.mymobile.pk/app) unless
-    // MEDUSA_DISABLE_ADMIN=true (e.g. if the VPS runs out of memory building it).
-    disable: process.env.MEDUSA_DISABLE_ADMIN === 'true',
+    disable: process.env.NODE_ENV === 'production',
     vite: () => {
       return {
         server: {
@@ -73,6 +71,7 @@ export default defineConfig({
       }
     }
   },
+
 
 
   projectConfig: {
@@ -122,17 +121,17 @@ export default defineConfig({
     },
     ...(process.env.REDIS_URL
       ? {
-          [Modules.CACHE]: {
-            resolve: "@medusajs/cache-redis",
-            options: { redisUrl: process.env.REDIS_URL, ttl: 60 },
+        [Modules.CACHE]: {
+          resolve: "@medusajs/cache-redis",
+          options: { redisUrl: process.env.REDIS_URL, ttl: 60 },
+        },
+        [Modules.WORKFLOW_ENGINE]: {
+          resolve: "@medusajs/workflow-engine-redis",
+          options: {
+            redis: { url: process.env.REDIS_URL },
           },
-          [Modules.WORKFLOW_ENGINE]: {
-            resolve: "@medusajs/workflow-engine-redis",
-            options: {
-              redis: { url: process.env.REDIS_URL },
-            },
-          },
-        }
+        },
+      }
       : {}),
 
     [Modules.AUTH]: {
@@ -252,25 +251,25 @@ export default defineConfig({
     // API key, which would otherwise block `db:migrate` / local dev entirely.
     ...(process.env.MEILISEARCH_API_KEY
       ? [
-          {
-            resolve: "@rokmohar/medusa-plugin-meilisearch",
-            options: {
-              config: {
-                host: process.env.MEILISEARCH_HOST || "http://127.0.0.1:7700",
-                apiKey: process.env.MEILISEARCH_API_KEY,
-              },
-              settings: {
-                products: {
-                  indexSettings: {
-                    searchableAttributes: ["title", "description", "variant_sku"],
-                    displayedAttributes: ["id", "title", "description", "variant_sku", "thumbnail", "handle"],
-                  },
-                  primaryKey: "id",
+        {
+          resolve: "@rokmohar/medusa-plugin-meilisearch",
+          options: {
+            config: {
+              host: process.env.MEILISEARCH_HOST || "http://127.0.0.1:7700",
+              apiKey: process.env.MEILISEARCH_API_KEY,
+            },
+            settings: {
+              products: {
+                indexSettings: {
+                  searchableAttributes: ["title", "description", "variant_sku"],
+                  displayedAttributes: ["id", "title", "description", "variant_sku", "thumbnail", "handle"],
                 },
+                primaryKey: "id",
               },
             },
           },
-        ]
+        },
+      ]
       : []),
     ...(process.env.GA_MEASUREMENT_ID && process.env.GA_API_SECRET
       ? [

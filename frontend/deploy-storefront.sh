@@ -63,6 +63,10 @@ if [ -d "$ACTIVE_DIR/.next" ]; then
 fi
 mv "$BUILD_DIR/.next" "$ACTIVE_DIR/.next"
 
+# The live folder runs `next start` from its OWN node_modules, so bring the
+# freshly installed ones over (first deploy has none at all).
+rsync -a --delete "$BUILD_DIR/node_modules/" "$ACTIVE_DIR/node_modules/"
+
 # Sync public/ files if they changed (images, favicon, etc.)
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete "$BUILD_DIR/public/" "$ACTIVE_DIR/public/"

@@ -121,11 +121,17 @@ chown -R mymobile-cdnlive:mymobile-cdnlive $U
 ```
 Check: `curl -sI https://cdnlive.mymobile.pk/uploads/images/<any-file>.webp` should return 200.
 
-## 3. Frontend (mymobile.pk). **Not yet**
+## 3. Frontend (mymobile.pk)
 
-The PHP site still lives in `/home/mymobilepk/htdocs/mymobile.pk`. The
-Next.js frontend replaces it, so it waits until the API and CDN are verified
-and the new vhost is ready. When it is time (images must already be copied to the CDN):
+In CloudPanel the site is a **Node.js app on port 3124**. Paste
+`deploy/cloudpanel-vhost-mymobile.pk.conf` into its Vhost editor. It covers:
+- www → mymobile.pk
+- `/marketplace` → 3800 (unchanged)
+- `/images/` and `/cache/img/` → CDN app 3123
+- everything else → Next on 3124
+
+The images must already be copied to the CDN. If the PHP files are still in
+the folder, back them up first:
 ```bash
 cp -a /home/mymobilepk/htdocs/mymobile.pk /home/mymobilepk/htdocs/mymobile.pk-php-backup   # as root
 cd /home/mymobilepk/htdocs/mymobile.pk
@@ -136,9 +142,19 @@ nano .env                       # paste deploy/live/frontend/.env, save
 REPLACE_PHP=yes ./pull.sh       # first time only; later just ./pull.sh
 ```
 `pull.sh` refuses to run while `index.php` / `router.php` are in the folder,
-unless you pass `REPLACE_PHP=yes`. This stops it from wiping the PHP site by accident.
-The nginx vhost will be prepared separately. It keeps `/marketplace` → 3800
-and serves `/images` + `/cache/img` from the CDN uploads folder.
+unless you pass `REPLACE_PHP=yes`. This stops it from wiping the PHP site by
+accident. If the folder is already empty (new Node site), plain `./pull.sh` is enough.
+
+Check after the deploy:
+```bash
+pm2 logs mymobile --lines 30
+curl -sI https://mymobile.pk/ | head -1                      # 200
+curl -sI https://mymobile.pk/brands/ | head -1               # 200
+curl -sI https://mymobile.pk/images/<any-file>.webp | head -1 # 200 (old image URL)
+curl -sI https://mymobile.pk/marketplace | head -1           # classifieds still answer
+curl -s  https://mymobile.pk/sitemap.xml | head -5
+```
+Then purge the Cloudflare cache and resubmit `/sitemap.xml` in Search Console.
 
 ---
 
