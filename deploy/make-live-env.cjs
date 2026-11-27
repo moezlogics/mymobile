@@ -38,6 +38,13 @@ const DATABASE_URL = db.toString()
 // committed). The first deploy creates the user, then removes these lines.
 const admin = loadEnv(path.join(__dirname, "live", "admin.env"))
 const prevApi = loadEnv(path.join(__dirname, "live", "api", ".env"))
+// VAPID keys for web push: generated once, then kept stable across re-runs
+// (changing them breaks every existing push subscription).
+const vapid =
+  prevApi.VAPID_PUBLIC_KEY && prevApi.VAPID_PRIVATE_KEY
+    ? { publicKey: prevApi.VAPID_PUBLIC_KEY, privateKey: prevApi.VAPID_PRIVATE_KEY }
+    : require(path.join(ROOT, "backend/node_modules/web-push")).generateVAPIDKeys()
+
 const adminBlock =
   admin.MM_ADMIN_EMAIL && admin.MM_ADMIN_PASSWORD
     ? `# One-time: first deploy creates this admin (api.mymobile.pk/app), then deletes these 2 lines.
@@ -62,9 +69,9 @@ DATABASE_URL=${DATABASE_URL}
 # PSQL_BIN=/usr/bin/psql
 
 ${adminBlock}
-# Optional. Leave commented unless Redis runs on this server (use a db
-# number zmobiles.pk does not use).
-# REDIS_URL=redis://127.0.0.1:6379/5
+# Redis (same server as zmobiles.pk, which uses db 1, so mymobile uses db 3).
+# If this server has no Redis, put # in front of this line.
+REDIS_URL=redis://127.0.0.1:6379/3
 
 JWT_SECRET=${be.JWT_SECRET}
 COOKIE_SECRET=${be.COOKIE_SECRET}
@@ -86,16 +93,37 @@ CDN_API_KEY=${be.CDN_API_KEY}
 
 AGENTIC_COMMERCE_SIGNATURE_KEY=${prevApi.AGENTIC_COMMERCE_SIGNATURE_KEY || crypto.randomBytes(32).toString("hex")}
 
+# Web push notifications: new keys made for mymobile.pk (not zmobiles')
+VAPID_PUBLIC_KEY=${vapid.publicKey}
+VAPID_PRIVATE_KEY=${vapid.privateKey}
+VAPID_SUBJECT=${SITE}
+
 # Meilisearch not used by mymobile.pk (leave empty)
 MEILISEARCH_HOST=
 MEILISEARCH_API_KEY=
 
-# Email (fill when ready)
-# SMTP_HOST=smtp.gmail.com
-# SMTP_PORT=587
-# SMTP_USER=
-# SMTP_PASS=
-# SMTP_FROM=
+# ── Optional: same keys as zmobiles.pk, fill only if you want the feature ──
+# Email (order / contact / password-reset mails). Gmail needs an App Password.
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+SMTP_FROM_NAME=My Mobile
+
+# "Sign in with Google": needs its own OAuth client for mymobile.pk
+# (Google Cloud Console → redirect URI ${SITE}/auth/google/callback)
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+# GOOGLE_CALLBACK_URL=${SITE}/auth/google/callback
+
+# Google Analytics server-side events
+# GA_MEASUREMENT_ID=
+# GA_API_SECRET=
+
+# AI shopping assistant (chat widget is removed on mymobile.pk, not needed)
+# OPENAI_API_KEY=
+# OPENAI_MODEL=gpt-5-mini
 `,
   cdn: `# mymobile.pk CDN: /home/mymobile-cdnlive/htdocs/cdnlive.mymobile.pk/.env
 PORT=${CDN_PORT}
@@ -111,6 +139,8 @@ THUMB_WIDTH=600
 AUTO_ALT_ENABLED=false
 AUTO_ALT_LANG=en
 AUTO_ALT_MAX_CHARS=250
+# Only used when AUTO_ALT_ENABLED=true
+# OPENAI_API_KEY=
 `,
   frontend: `# mymobile.pk storefront (Next.js): /home/mymobilepk/htdocs/mymobile.pk/.env
 PORT=${WEB_PORT}
@@ -129,6 +159,9 @@ NEXT_PUBLIC_MEILISEARCH_SEARCH_KEY=
 NEXT_PUBLIC_MEILISEARCH_PRODUCT_INDEX_NAME=products
 MEILISEARCH_INTERNAL_HOST=
 MEILISEARCH_SEARCH_KEY=
+# Optional (same as zmobiles.pk)
+NEXT_PUBLIC_GA_MEASUREMENT_ID=
+# NEXT_PUBLIC_GOOGLE_CALLBACK_URL=${SITE}/auth/google/callback
 `,
 }
 
@@ -136,6 +169,6 @@ for (const [name, body] of Object.entries(files)) {
   const out = path.join(__dirname, "live", name, ".env")
   fs.mkdirSync(path.dirname(out), { recursive: true })
   fs.writeFileSync(out, body)
-  const missing = body.split("\n").filter((l) => /=(undefined)?$/.test(l) && /SECRET|KEY|DATABASE/.test(l) && !/MEILI/.test(l))
+  const missing = body.split("\n").filter((l) => !l.startsWith("#") && /=(undefined)?$/.test(l) && /SECRET|KEY|DATABASE/.test(l) && !/MEILI/.test(l))
   console.log(`wrote ${path.relative(ROOT, out)}${missing.length ? "  MISSING: " + missing.join(", ") : ""}`)
 }
