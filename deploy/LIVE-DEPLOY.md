@@ -19,7 +19,7 @@ gitignored.
 `backend/db/seed/mymobilepkdb.sql.gz` is a full copy of the local database
 (273 products, brands, reviews, blog, pages, settings, contacts…).
 
-On the **first** `bash pull.sh`, `deploy-backend.sh`:
+On the **first** `./pull.sh`, `deploy-backend.sh`:
 
 1. Runs `db/bootstrap.cjs`, which creates the database from `DATABASE_URL`
    and restores the copy in one transaction. All image URLs are set to
@@ -30,7 +30,7 @@ On the **first** `bash pull.sh`, `deploy-backend.sh`:
    copy) from the server and removes `MM_ADMIN_*` and `PG_ADMIN_URL` from
    `.env`. It also writes `.db-bootstrapped`.
 
-Every later `bash pull.sh` skips all of this and never copies `db/` again.
+Every later `./pull.sh` skips all of this and never copies `db/` again.
 Live data is never overwritten. (Even if run by hand, bootstrap refuses to
 touch a database that already has tables.)
 
@@ -61,13 +61,20 @@ PATH, set `PSQL_BIN=/usr/lib/postgresql/<ver>/bin/psql` in the API `.env`.
 
 ## 1. API (api.mymobile.pk)
 
-SSH in as the site user `mymobile-api`:
+SSH in as the site user `mymobile-api`. **First time:**
 ```bash
 cd /home/mymobile-api/htdocs/api.mymobile.pk
-git clone <your GitHub repo URL> .deploy-source
-nano .env                       # paste deploy/live/api/.env
-cp .deploy-source/backend/pull.sh . && bash pull.sh
+git clone --filter=blob:none --sparse https://github.com/moezlogics/mymobile.git .deploy-source
+git -C .deploy-source sparse-checkout set backend
+cp .deploy-source/backend/pull.sh . && chmod +x pull.sh
+nano .env                       # paste deploy/live/api/.env, save
+./pull.sh
 ```
+(The repo is private, so git asks for your GitHub username and a personal
+access token, unless the server already has a credential helper set up. You
+can also just paste `pull.sh` with nano and run it. It clones by itself when
+`.deploy-source` is missing.)
+
 `pull.sh` runs, in order:
 1. git pull
 2. rsync
@@ -87,20 +94,23 @@ ls -a                                 # .db-bootstrapped present, no db/ folder
 ```
 Then log in at https://api.mymobile.pk/app with the admin email.
 
-Every later update is just `bash pull.sh`.
+Every later update is just `./pull.sh` in the same folder.
 
 > If the server runs out of memory during `medusa build`, set
 > `MEDUSA_DISABLE_ADMIN=true` in `.env`. The API keeps working without the admin UI.
 
 ## 2. CDN (cdnlive.mymobile.pk)
 
-As the site user `mymobile-cdnlive`:
+As the site user `mymobile-cdnlive`. **First time:**
 ```bash
 cd /home/mymobile-cdnlive/htdocs/cdnlive.mymobile.pk
-git clone <your GitHub repo URL> .deploy-source
-nano .env                       # paste deploy/live/cdn/.env
-cp .deploy-source/cdn/pull.sh . && bash pull.sh
+git clone --filter=blob:none --sparse https://github.com/moezlogics/mymobile.git .deploy-source
+git -C .deploy-source sparse-checkout set cdn
+cp .deploy-source/cdn/pull.sh . && chmod +x pull.sh
+nano .env                       # paste deploy/live/cdn/.env, save
+./pull.sh
 ```
+Later updates: `./pull.sh`.
 Copy the images once, as **root** (the same files the PHP site serves):
 ```bash
 U=/home/mymobile-cdnlive/htdocs/cdnlive.mymobile.pk/uploads
@@ -115,13 +125,18 @@ Check: `curl -sI https://cdnlive.mymobile.pk/uploads/images/<any-file>.webp` sho
 
 The PHP site still lives in `/home/mymobilepk/htdocs/mymobile.pk`. The
 Next.js frontend replaces it, so it waits until the API and CDN are verified
-and the new vhost is ready. When it is time:
+and the new vhost is ready. When it is time (images must already be copied to the CDN):
 ```bash
+cp -a /home/mymobilepk/htdocs/mymobile.pk /home/mymobilepk/htdocs/mymobile.pk-php-backup   # as root
 cd /home/mymobilepk/htdocs/mymobile.pk
-git clone <your GitHub repo URL> .deploy-source
-nano .env                       # paste deploy/live/frontend/.env
-cp .deploy-source/frontend/pull.sh . && bash pull.sh
+git clone --filter=blob:none --sparse https://github.com/moezlogics/mymobile.git .deploy-source
+git -C .deploy-source sparse-checkout set frontend
+cp .deploy-source/frontend/pull.sh . && chmod +x pull.sh
+nano .env                       # paste deploy/live/frontend/.env, save
+REPLACE_PHP=yes ./pull.sh       # first time only; later just ./pull.sh
 ```
+`pull.sh` refuses to run while `index.php` / `router.php` are in the folder,
+unless you pass `REPLACE_PHP=yes`. This stops it from wiping the PHP site by accident.
 The nginx vhost will be prepared separately. It keeps `/marketplace` → 3800
 and serves `/images` + `/cache/img` from the CDN uploads folder.
 
@@ -135,7 +150,7 @@ cd backend && node db/export-seed.cjs     # rewrites db/seed/mymobilepkdb.sql.gz
 ```
 Then commit and push. After the first deploy the copy is never used again.
 To start over, drop the live database, delete `.db-bootstrapped` and run
-`bash pull.sh`.
+`./pull.sh`.
 
 **Privacy:** the database copy contains contact-form leads and reviewer
 emails. Keep the GitHub repository **private**. After the live deploy works,
